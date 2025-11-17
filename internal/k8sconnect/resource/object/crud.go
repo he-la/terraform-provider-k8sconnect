@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common"
+	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common/auth"
 	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common/k8sclient"
 )
 
@@ -87,6 +88,16 @@ func (r *objectResource) Create(ctx context.Context, req resource.CreateRequest,
 	ignoreFields := getIgnoreFields(ctx, rc.Data)
 	saveOwnershipBaseline(ctx, resp.Private, rc.Object, ignoreFields)
 
+	// 8d. Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, rc.Data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	rc.Data.Cluster = nullCluster
+
 	// 9. SAVE STATE after successful creation
 	diags = resp.State.Set(ctx, rc.Data)
 	resp.Diagnostics.Append(diags...)
@@ -101,7 +112,29 @@ func (r *objectResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	// 1a. Check for pending projection (opportunistic recovery - ADR-006)
+	// 1a. Load cluster from private state (write-only behavior)
+	clusterFromPrivate, err := auth.LoadClusterFromPrivateState(ctx, req.Private)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to load cluster from private state",
+			fmt.Sprintf("Cannot read resource without cluster configuration: %s. "+
+				"Ensure cluster is specified in your Terraform configuration.", err.Error()),
+		)
+		return
+	}
+	if clusterFromPrivate.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing cluster configuration",
+			"No cluster configuration found in private state. "+
+				"This resource may have been imported without cluster information, or there was an error during creation. "+
+				"Please ensure cluster is specified in your Terraform configuration and run terraform apply to save it.",
+		)
+		return
+	}
+	// Use cluster from private state for Read operation
+	data.Cluster = clusterFromPrivate
+
+	// 1b. Check for pending projection (opportunistic recovery - ADR-006)
 	hasPendingProjection := checkPendingProjectionFlag(ctx, req.Private)
 	if hasPendingProjection {
 		tflog.Info(ctx, "Detected pending projection during refresh, will attempt recovery")
@@ -206,6 +239,16 @@ func (r *objectResource) Read(ctx context.Context, req resource.ReadRequest, res
 	// 6. Update field ownership
 	updateManagedFieldsData(ctx, &data, currentObj)
 
+	// 6a. Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	data.Cluster = nullCluster
+
 	// 7. Save refreshed state
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -293,6 +336,16 @@ func (r *objectResource) Update(ctx context.Context, req resource.UpdateRequest,
 	ignoreFields := getIgnoreFields(ctx, &plan)
 	saveOwnershipBaseline(ctx, resp.Private, rc.Object, ignoreFields)
 
+	// 7c. Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, plan.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	plan.Cluster = nullCluster
+
 	// 8. Save updated state
 	diags = resp.State.Set(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -306,6 +359,24 @@ func (r *objectResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// 1a. Load cluster from private state (write-only behavior)
+	clusterFromPrivate, err := auth.LoadClusterFromPrivateState(ctx, req.Private)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to load cluster from private state",
+			fmt.Sprintf("Cannot delete resource without cluster configuration: %s", err.Error()),
+		)
+		return
+	}
+	if clusterFromPrivate.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing cluster configuration",
+			"No cluster configuration found. Cannot delete resource without cluster connection details.",
+		)
+		return
+	}
+	data.Cluster = clusterFromPrivate
 
 	// 2. Check delete protection
 	if !data.DeleteProtection.IsNull() && data.DeleteProtection.ValueBool() {

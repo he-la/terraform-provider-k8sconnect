@@ -3,9 +3,35 @@ package auth
 import (
 	datasourceschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+// GetClusterSchemaForResource returns the complete cluster schema attribute for resources
+// with write-only behavior (not stored in state).
+//
+// The cluster configuration is:
+// - Required in Terraform configuration (.tf files)
+// - Available during all operations (Create/Update/Delete/Read)
+// - Stored in private state (not visible to users)
+// - NOT stored in public state (to avoid persisting credentials)
+//
+// Usage: Resources must call SaveClusterToPrivateState() before saving state,
+// and LoadClusterFromPrivateState() during Read operations.
+func GetClusterSchemaForResource() resourceschema.SingleNestedAttribute {
+	return resourceschema.SingleNestedAttribute{
+		Required: true,
+		Description: "Kubernetes cluster connection for this specific resource. Can be different per-resource, enabling multi-cluster " +
+			"deployments without provider aliases. Supports inline credentials (token, exec, client certs) or kubeconfig. " +
+			"**NOTE: Connection details are write-only and not stored in state to protect credentials. " +
+			"You must always provide the cluster configuration in your .tf files.**",
+		Attributes: GetConnectionSchemaForResource(),
+		PlanModifiers: []planmodifier.Object{
+			WriteOnly(),
+		},
+	}
+}
 
 // GetConnectionSchemaForResource returns the cluster connection schema attributes for resources.
 // This is the single source of truth for the connection schema.
@@ -86,6 +112,18 @@ func GetConnectionSchemaForResource() map[string]resourceschema.Attribute {
 				},
 			},
 		},
+	}
+}
+
+// GetClusterSchemaForDataSource returns the complete cluster schema attribute for data sources.
+// Data sources mark cluster as sensitive to protect credentials in output.
+func GetClusterSchemaForDataSource() datasourceschema.SingleNestedAttribute {
+	return datasourceschema.SingleNestedAttribute{
+		Required: true,
+		Sensitive: true,
+		Description: "Kubernetes cluster connection configuration. " +
+			"Connection details are marked as sensitive to protect credentials.",
+		Attributes: GetConnectionSchemaForDataSource(),
 	}
 }
 

@@ -211,12 +211,7 @@ When you destroy a patch resource, ownership is released but patched values rema
 				},
 			},
 
-			"cluster": schema.SingleNestedAttribute{
-				Required: true,
-				Description: "Kubernetes cluster connection for this specific patch. Can be different per-resource, enabling multi-cluster " +
-					"deployments without provider aliases. Supports inline credentials (token, exec, client certs) or kubeconfig.",
-				Attributes: auth.GetConnectionSchemaForResource(),
-			},
+			"cluster": auth.GetClusterSchemaForResource(),
 
 			// Computed fields
 			"managed_state_projection": schema.MapAttribute{

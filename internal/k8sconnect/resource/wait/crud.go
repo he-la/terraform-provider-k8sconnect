@@ -70,6 +70,16 @@ func (r *waitResource) Create(ctx context.Context, req resource.CreateRequest, r
 		// Don't fail the entire operation - result is optional
 	}
 
+	// Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	data.Cluster = nullCluster
+
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -83,6 +93,24 @@ func (r *waitResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	// Load cluster from private state (write-only behavior)
+	clusterFromPrivate, err := auth.LoadClusterFromPrivateState(ctx, req.Private)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to load cluster from private state",
+			fmt.Sprintf("Cannot read resource without cluster configuration: %s", err.Error()),
+		)
+		return
+	}
+	if clusterFromPrivate.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing cluster configuration",
+			"No cluster configuration found. Ensure cluster is specified in your Terraform configuration.",
+		)
+		return
+	}
+	data.Cluster = clusterFromPrivate
+
 	// Build wait context
 	wc, diags := r.buildWaitContext(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -91,11 +119,11 @@ func (r *waitResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	// Verify the resource still exists
-	_, err := wc.Client.Get(ctx, wc.GVR, wc.ObjectRef.Namespace.ValueString(), wc.ObjectRef.Name.ValueString())
-	if err != nil {
+	_, resourceErr := wc.Client.Get(ctx, wc.GVR, wc.ObjectRef.Namespace.ValueString(), wc.ObjectRef.Name.ValueString())
+	if resourceErr != nil {
 		// Resource was deleted outside Terraform
 		tflog.Warn(ctx, "Resource no longer exists", map[string]interface{}{
-			"error": err.Error(),
+			"error": resourceErr.Error(),
 		})
 		resp.State.RemoveResource(ctx)
 		return
@@ -119,6 +147,16 @@ func (r *waitResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			tflog.Debug(ctx, "Skipping result refresh - connection has unknown values (bootstrap)")
 		}
 	}
+
+	// Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	data.Cluster = nullCluster
 
 	// Save potentially updated state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -158,6 +196,16 @@ func (r *waitResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		tflog.Warn(ctx, "Failed to populate result after wait", map[string]interface{}{"error": err.Error()})
 		// Don't fail the entire operation - result is optional
 	}
+
+	// Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	data.Cluster = nullCluster
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

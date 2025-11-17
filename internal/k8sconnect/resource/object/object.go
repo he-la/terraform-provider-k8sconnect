@@ -107,12 +107,7 @@ func (r *objectResource) Schema(ctx context.Context, req resource.SchemaRequest,
 					serverManagedFieldsValidator{},
 				},
 			},
-			"cluster": schema.SingleNestedAttribute{
-				Required: true,
-				Description: "Kubernetes cluster connection for this specific resource. Can be different per-resource, enabling multi-cluster " +
-					"deployments without provider aliases. Supports inline credentials (token, exec, client certs) or kubeconfig.",
-				Attributes: auth.GetConnectionSchemaForResource(),
-			},
+			"cluster": auth.GetClusterSchemaForResource(),
 			"delete_protection": schema.BoolAttribute{
 				Optional:    true,
 				Description: "Prevent accidental deletion of the resource. If set to true, the resource cannot be deleted unless this field is set to false.",
