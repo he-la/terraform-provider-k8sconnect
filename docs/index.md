@@ -43,6 +43,8 @@ That's it. The connection is inline—Terraform resolves the outputs, and everyt
 
 The provider requires no global configuration. Authentication is specified per-resource via the `cluster` block, supporting three methods:
 
+> **Note on Credentials Security**: The `cluster` configuration (including authentication credentials) is **write-only** and **not stored in Terraform state**. Credentials are used during plan/apply/refresh operations but are not persisted in state files. You must always provide the `cluster` configuration in your Terraform files for operations to work.
+
 ### Token Authentication
 
 ```terraform

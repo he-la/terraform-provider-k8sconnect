@@ -73,6 +73,8 @@ That's it. The connection is defined once and reused—Terraform can resolve the
 
 ## Connection Methods
 
+> **Security Note**: Connection details (including credentials) are **write-only** and **not stored in Terraform state**. The `cluster` configuration is used during operations but not persisted in state files, protecting your credentials. Always provide `cluster` in your Terraform configuration files.
+
 The provider supports three ways to connect to clusters:
 
 **Inline with token auth**

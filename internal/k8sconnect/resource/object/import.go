@@ -303,11 +303,19 @@ func (r *objectResource) buildImportState(ctx context.Context, resourceID string
 		return false
 	}
 
+	// Save cluster to private state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, connectionObj)
+	if err != nil {
+		tflog.Warn(ctx, "Failed to save cluster to private state during import", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
 	// Create imported data with managed state projection
 	importedData := objectResourceModel{
 		ID:                     types.StringValue(resourceID),
 		YAMLBody:               types.StringValue(string(yamlBytes)),
-		Cluster:                connectionObj,
+		Cluster:                nullCluster, // Cluster is write-only, not saved to public state
 		DeleteProtection:       types.BoolValue(false),
 		IgnoreFields:           types.ListNull(types.StringType),
 		ManagedStateProjection: projectionMapValue,

@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common"
+	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common/auth"
 	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common/fieldmanagement"
 	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common/k8sclient"
 	"github.com/jmorris0x0/terraform-provider-k8sconnect/internal/k8sconnect/common/k8serrors"
@@ -99,6 +100,16 @@ func (r *patchResource) Create(ctx context.Context, req resource.CreateRequest, 
 	// 9. Update managed_fields attribute in state
 	updateManagedFieldsData(ctx, &data, patchedObj, fieldManager)
 
+	// 11. Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	data.Cluster = nullCluster
+
 	// 12. Save state
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -112,6 +123,24 @@ func (r *patchResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// 1a. Load cluster from private state (write-only behavior)
+	clusterFromPrivate, err := auth.LoadClusterFromPrivateState(ctx, req.Private)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to load cluster from private state",
+			fmt.Sprintf("Cannot read resource without cluster configuration: %s", err.Error()),
+		)
+		return
+	}
+	if clusterFromPrivate.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing cluster configuration",
+			"No cluster configuration found. Ensure cluster is specified in your Terraform configuration.",
+		)
+		return
+	}
+	data.Cluster = clusterFromPrivate
 
 	// 2. Setup client
 	client, err := r.setupClient(ctx, &data, &resp.Diagnostics)
@@ -225,6 +254,16 @@ func (r *patchResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	// 7. Update managed_fields attribute in state
 	updateManagedFieldsData(ctx, &data, currentObj, fieldManager)
 
+	// 8. Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, data.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	data.Cluster = nullCluster
+
 	// 9. Save refreshed state
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -310,6 +349,16 @@ func (r *patchResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	// 8b. Update managed_fields attribute in state
 	updateManagedFieldsData(ctx, &plan, patchedObj, fieldManager)
 
+	// 10. Save cluster to private state and null it in public state (write-only behavior)
+	nullCluster, err := auth.SaveClusterToPrivateState(ctx, resp.Private, plan.Cluster)
+	if err != nil {
+		resp.Diagnostics.AddWarning(
+			"Failed to save cluster to private state",
+			fmt.Sprintf("Cluster configuration may not be available for subsequent operations: %s", err.Error()),
+		)
+	}
+	plan.Cluster = nullCluster
+
 	// 11. Save updated state
 	diags = resp.State.Set(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -323,6 +372,24 @@ func (r *patchResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// 1a. Load cluster from private state (write-only behavior)
+	clusterFromPrivate, err := auth.LoadClusterFromPrivateState(ctx, req.Private)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to load cluster from private state",
+			fmt.Sprintf("Cannot delete resource without cluster configuration: %s", err.Error()),
+		)
+		return
+	}
+	if clusterFromPrivate.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing cluster configuration",
+			"No cluster configuration found. Cannot delete resource without cluster connection details.",
+		)
+		return
+	}
+	data.Cluster = clusterFromPrivate
 
 	// 2. Setup client
 	client, err := r.setupClient(ctx, &data, &resp.Diagnostics)

@@ -132,12 +132,7 @@ func (r *waitResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 					},
 				},
 			},
-			"cluster": schema.SingleNestedAttribute{
-				Required: true,
-				Description: "Kubernetes cluster connection for accessing the resource. " +
-					"Should match the connection used by the k8sconnect_object resource.",
-				Attributes: auth.GetConnectionSchemaForResource(),
-			},
+			"cluster": auth.GetClusterSchemaForResource(),
 			"wait_for": schema.SingleNestedAttribute{
 				Required:    true,
 				Description: "Conditions to wait for before considering the resource ready.",

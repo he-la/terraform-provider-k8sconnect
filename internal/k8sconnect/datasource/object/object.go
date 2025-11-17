@@ -83,11 +83,7 @@ func (d *objectDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 				Optional:    true,
 				Description: "Namespace of the resource (optional for cluster-scoped resources, defaults to 'default' for namespaced resources if not specified)",
 			},
-			"cluster": schema.SingleNestedAttribute{
-				Required:    true,
-				Description: "Cluster connection configuration",
-				Attributes:  auth.GetConnectionSchemaForDataSource(),
-			},
+			"cluster": auth.GetClusterSchemaForDataSource(),
 			// Outputs
 			"manifest": schema.StringAttribute{
 				Computed:    true,
